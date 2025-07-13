@@ -38,7 +38,7 @@ pub fn ComplexPropsDemo() -> impl IntoView {
                 <div style="text-align: center; margin-bottom: 40px;">
                     <h1 style="color: #333; margin-bottom: 8px;">"Leptos 复杂 Props 演示"</h1>
                     <p style="color: #666; font-size: 18px;">
-                        "展示结构体类型的 Props 用法  哈哈哈哈修改文件试试真的可以吗 "
+                        "展示结构体类型的 Props 用法。测试文件监听功能。"
                     </p>
                 </div>
 

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"pnpm run wasm:watch\" \"vite\" --names \"WASM,VITE\" --prefix-colors \"cyan,green\"",
-    "wasm:watch": "cargo watch -i pkg -i target -s \"wasm-pack build --target web --no-typescript --dev\"",
+    "wasm:watch": "cargo watch -i pkg -i target -w src -w Cargo.toml -w Cargo.lock -s \"wasm-pack build --target web --no-typescript --dev\"",
     "wasm:build": "wasm-pack build --target web --no-typescript --release",
     "build": "pnpm run wasm:build && vite build",
     "preview": "vite preview",
