@@ -108,7 +108,7 @@ pub fn ComplexPropsDemo() -> impl IntoView {
                             pub avatar: Option<String>,
                             pub role: String,
                             }
-
+                            
                             #[derive(Debug, Clone, PartialEq)]
                             pub struct CardConfig {
                             pub theme: String,
@@ -134,26 +134,26 @@ pub fn ComplexPropsDemo() -> impl IntoView {
                             let increment_action = Action::new({
                             let set_count = set_count.clone();
                             move |amount: &i32| {
-                              let amount = *amount;
-                              let set_count = set_count.clone();
-                              async move {
-                                  set_count.update(|c| *c += amount);
-                              }
+                            let amount = *amount;
+                            let set_count = set_count.clone();
+                            async move {
+                                set_count.update(|c| *c += amount);
+                            }
                             }
                             });
-
+                            
                             // 在组件中使用 Action
                             #[component]
                             pub fn MyComponent(
                             increment_action: Action<i32, ()>,  // 接收 Action 作为 prop
                             ) -> impl IntoView {
                             view! {
-                              <button
-                                  disabled=move || increment_action.pending().get()
-                                  on:click=move |_| { increment_action.dispatch(5); }
-                              >
-                                  "点击调用 Action"
-                              </button>
+                            <button
+                                disabled=move || increment_action.pending().get()
+                                on:click=move |_| { increment_action.dispatch(5); }
+                            >
+                                "点击调用 Action"
+                            </button>
                             }
                             }"#}
                         </pre>
@@ -165,19 +165,19 @@ pub fn ComplexPropsDemo() -> impl IntoView {
                             // 2. value() - 最后的返回值
                             // 3. version() - 执行次数
                             // 4. error() - 错误信息（如果有）
-
+                            
                             view! {
                             <button
-                              disabled=move || action.pending().get()
-                              on:click=move |_| { action.dispatch(data); }
+                            disabled=move || action.pending().get()
+                            on:click=move |_| { action.dispatch(data); }
                             >
-                              {move || if action.pending().get() {
-                                  "处理中..."
-                              } else {
-                                  "点击执行"
-                              }}
+                            {move || if action.pending().get() {
+                                "处理中..."
+                            } else {
+                                "点击执行"
+                            }}
                             </button>
-
+                            
                             <p>"执行次数: " {action.version()}</p>
                             }"#}
                         </pre>
@@ -186,16 +186,16 @@ pub fn ComplexPropsDemo() -> impl IntoView {
                         <pre style="background: #f8f9fa; padding: 16px; border-radius: 6px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 14px;">
                             {r#"<UserCard
                             user=User {
-                              id: 1,
-                              name: "张三".to_string(),
-                              email: "zhangsan@example.com".to_string(),
-                              avatar: Some("avatar.jpg".to_string()),
-                              role: "开发者".to_string(),
+                            id: 1,
+                            name: "张三".to_string(),
+                            email: "zhangsan@example.com".to_string(),
+                            avatar: Some("avatar.jpg".to_string()),
+                            role: "开发者".to_string(),
                             }
                             config=CardConfig {
-                              theme: "light".to_string(),
-                              show_email: true,
-                              show_role: true,
+                            theme: "light".to_string(),
+                            show_email: true,
+                            show_role: true,
                             }
                             />"#}
                         </pre>

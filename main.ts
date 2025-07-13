@@ -1,8 +1,10 @@
 // 🎉 使用虚拟模块自动加载 WASM
 import 'virtual:wasm-init';
-
 // 🎨 导入样式文件
 import './src/assets/styles.css';
+// 📦 导入 MDUI 组件和样式
+import 'mdui/mdui.css';
+import 'mdui';
 
 console.log('🚀 Main.ts loaded - WASM auto-import configured!');
 console.log('🎨 Styles loaded');

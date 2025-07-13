@@ -9,6 +9,8 @@ mod pages;
 // Top-Level pages
 use crate::pages::complex_props_demo::ComplexPropsDemo;
 use crate::pages::home::Home;
+use crate::pages::mdui_demo::MduiDemo;
+use crate::pages::mdui_js_api_demo::MduiJsApiDemo;
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -22,14 +24,21 @@ pub fn App() -> impl IntoView {
             </div>
 
             <nav>
-                <a href="/">"Home"</a> " | "
+                <a href="/">"Home"</a>
+                " | "
                 <a href="/complex-props-demo">"Complex Props Demo"</a>
+                " | "
+                <a href="/md-demo">"Mdui Demo"</a>
+                " | "
+                <a href="/md-js-api-demo">"Mdui Js Api Demo"</a>
             </nav>
 
             <Router>
                 <Routes fallback=|| view! { <p>"Not Found!"</p> }>
                     <Route path=path!("/") view=Home />
                     <Route path=path!("/complex-props-demo") view=ComplexPropsDemo />
+                    <Route path=path!("/md-demo") view=MduiDemo />
+                    <Route path=path!("/md-js-api-demo") view=MduiJsApiDemo />
                 </Routes>
             </Router>
         </div>
@@ -38,5 +47,8 @@ pub fn App() -> impl IntoView {
 
 #[wasm_bindgen(start)]
 pub fn start() {
-    mount_to_body(|| view! { <App/> });
+    _ = console_log::init_with_level(log::Level::Debug);
+    console_error_panic_hook::set_once();
+
+    mount_to_body(|| view! { <App /> });
 }
