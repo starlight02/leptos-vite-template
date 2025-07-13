@@ -1,0 +1,22 @@
+{
+  "name": "leptos-vite-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"pnpm run wasm:watch\" \"vite\" --names \"WASM,VITE\" --prefix-colors \"cyan,green\"",
+    "wasm:watch": "cargo watch -i pkg -i target -s \"wasm-pack build --target web --no-typescript --dev\"",
+    "wasm:build": "wasm-pack build --target web --no-typescript --release",
+    "build": "pnpm run wasm:build && vite build",
+    "preview": "vite preview",
+    "clean": "rimraf pkg dist target/wasm32-unknown-unknown"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "concurrently": "^8.2.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0",
+    "vite-plugin-top-level-await": "^1.1.0",
+    "vite-plugin-wasm": "^3.5.0"
+  }
+}

@@ -1,0 +1,75 @@
+
+[package]
+name = "leptos-vite-template"
+version = "0.1.0"
+edition = "2021"
+authors = ["星光の殲滅者 <starshine@aili.moe>"]
+description = "A modern Leptos + Vite template with hot reload"
+license = "MIT"
+repository = "https://github.com/starlight02/leptos-vite-template"
+keywords = ["leptos", "wasm", "vite", "rust", "frontend"]
+categories = ["web-programming", "wasm"]
+include = ["src/**", "Cargo.toml"]
+
+[lib]
+crate-type = ["cdylib"]
+
+# 生产优化配置
+[profile.release]
+# 启用链接时间优化
+lto = true
+# 代码大小优化
+opt-level = "z" # 或者 "z" 获得更小的体积
+# 减少调试信息
+debug = false
+# 启用所有可能的优化
+codegen-units = 1
+# 减少 panic 处理代码
+panic = "abort"
+# 去除符号表
+strip = "symbols"
+
+# 开发优化配置
+[profile.dev]
+# 开发时保持快速编译
+opt-level = 0
+debug = true
+# 允许更多编译单元提升编译速度
+codegen-units = 256
+# 增量编译
+incremental = true
+
+# WASM 特定优化
+[profile.release.package."*"]
+opt-level = "z"
+
+[dependencies]
+leptos = { version = "0.8", features = ["csr", "nightly"] }
+leptos_meta = { version = "0.8" }
+leptos_router = { version = "0.8", features = ["nightly"] }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+serde = { version = "1.0", features = ["derive"] }
+web-sys = { version = "0.3", features = [
+    "HtmlElement",
+    "Window",
+    "Document",
+    "console",
+] }
+# 添加常用的 web 功能
+js-sys = "0.3"
+# 更好的错误处理
+console_error_panic_hook = "0.1"
+# WASM 日志
+wasm-logger = "0.2"
+log = "0.4"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+wasm-pack = "0.13"
+
+# Cargo 优化配置
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz", "--enable-mutable-globals", "--enable-bulk-memory"]
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
