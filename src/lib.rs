@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos_router::{components::*, path};
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsCast;
 
 // Modules
 mod components;
@@ -50,5 +51,12 @@ pub fn start() {
     _ = console_log::init_with_level(log::Level::Debug);
     console_error_panic_hook::set_once();
 
-    mount_to_body(|| view! { <App /> });
+    let element = web_sys::window()
+        .unwrap()
+        .document()
+        .unwrap()
+        .get_element_by_id("leptos-app")
+        .expect("Element with id 'leptos-app' not found");
+    
+    mount_to(element.unchecked_into(), || view! { <App /> }).forget();
 }
