@@ -3,6 +3,7 @@ import { resolve } from "path";
 import { wasmImport } from "./plugins/vite-plugin-wasm-import";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
+import { visualizer } from "rollup-plugin-visualizer";
 
 export default defineConfig({
   plugins: [
@@ -52,8 +53,8 @@ export default defineConfig({
         manualChunks: {
           // 将 WASM 相关代码分离到单独的 chunk
           wasm: ["virtual:wasm-init"],
-          // 如果有第三方库，也可以分离
-          // vendor: ['some-library'],
+          // MDUI 工具库（本地打包版本）
+          mdui: ["./src/plugins/mdui.ts"],
         },
         // 文件命名策略
         entryFileNames: "assets/[name]-[hash].js",
@@ -88,8 +89,15 @@ export default defineConfig({
       },
       // 外部依赖处理（如果需要）
       // external: ['some-external-dependency'],
-      // 插件配置
-      plugins: [],
+      // 插件配置 - 包含 Bundle Analyzer
+      plugins: [
+        visualizer({
+          filename: ".vite/stats.html",
+          open: true,
+          gzipSize: true,
+          brotliSize: true,
+        }),
+      ],
     },
     // 实验性功能
     reportCompressedSize: true,
@@ -119,13 +127,11 @@ export default defineConfig({
   },
   // 依赖优化
   optimizeDeps: {
-    include: [
-      // 预构建的依赖
-    ],
     exclude: ["./pkg/*.js", "./pkg/*.wasm"],
-    // esbuild 选项
+    // esbuild 选项 - 启用自动 Tree Shaking
     esbuildOptions: {
       target: "esnext",
+      treeShaking: true,
     },
   },
   // 确保 WASM 文件被正确识别

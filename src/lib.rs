@@ -4,6 +4,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 
 // Modules
+mod bindings;
 mod components;
 mod pages;
 

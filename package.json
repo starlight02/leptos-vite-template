@@ -7,6 +7,7 @@
     "wasm:watch": "cargo watch -i pkg -i target -w src -w Cargo.toml -w Cargo.lock -s \"wasm-pack build --target web --no-typescript --dev\"",
     "wasm:build": "wasm-pack build --target web --no-typescript --release",
     "build": "pnpm run wasm:build && vite build",
+    "build:analyze": "pnpm run build && node scripts/analyze-bundle.js",
     "preview": "vite preview",
     "clean": "rimraf pkg dist target/wasm32-unknown-unknown"
   },
@@ -14,6 +15,7 @@
     "@types/node": "^20.0.0",
     "concurrently": "^8.2.0",
     "rimraf": "^5.0.0",
+    "rollup-plugin-visualizer": "^6.0.3",
     "typescript": "^5.0.0",
     "vite": "^6.0.0",
     "vite-plugin-top-level-await": "^1.1.0",
@@ -21,5 +23,6 @@
   },
   "dependencies": {
     "mdui": "^2.1.4"
-  }
+  },
+  "web-types": ["./node_modules/mdui/web-types.zh-cn.json"]
 }
