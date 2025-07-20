@@ -1,15 +1,41 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
 import { wasmImport } from "./plugins/vite-plugin-wasm-import";
+import { visualizer } from "rollup-plugin-visualizer";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
-import { visualizer } from "rollup-plugin-visualizer";
+import viteCompression from "vite-plugin-compression";
 
 export default defineConfig({
   plugins: [
     wasmImport(), // 自动处理 WASM 模块导入
     wasm(),
     topLevelAwait(),
+    // Brotli 压缩配置 - 最高级别，包含 WASM 文件
+    viteCompression({
+      algorithm: "brotliCompress",
+      ext: ".br",
+      compressionOptions: {
+        level: 11,
+        chunkSize: 32 * 1024,
+        windowBits: 22,
+      },
+      threshold: 1024,
+      deleteOriginFile: false,
+      verbose: true,
+      filter: /\.(js|mjs|json|css|html|wasm)$/i,
+    }),
+    // 可选：同时生成 gzip 版本用于兼容，也包含 WASM
+    viteCompression({
+      algorithm: "gzip",
+      ext: ".gz",
+      compressionOptions: {
+        level: 9,
+      },
+      threshold: 1024,
+      deleteOriginFile: false,
+      filter: /\.(js|mjs|json|css|html|wasm)$/i,
+    }),
   ],
 
   // 开发服务器配置
