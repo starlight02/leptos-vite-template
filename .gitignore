@@ -21,6 +21,7 @@ dist/
 # IDE
 .vscode/
 .idea/
+.kiro/
 *.swp
 *.swo
 
