@@ -20,11 +20,8 @@ Make sure you have the following tools installed:
 # Add wasm target
 rustup target add wasm32-unknown-unknown
 
-# Install wasm-pack
-cargo install wasm-pack
-
-# Install cargo-watch
-cargo install cargo-watch
+# Install some develop and build tools
+cargo install wasm-pack wasm-bindgen-cli wasm-opt cargo-watch leptosfmt
 
 # Install pnpm
 npm install -g pnpm
