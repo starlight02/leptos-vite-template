@@ -14,11 +14,13 @@
   "devDependencies": {
     "@types/node": "^24.0.15",
     "concurrently": "^9.2.0",
+    "oxlint": "^1.7.0",
     "rimraf": "^6.0.0",
     "rollup-plugin-visualizer": "^6.0.3",
     "typescript": "^5.8.3",
-    "vite": "^7.0.5",
+    "vite": "npm:rolldown-vite@latest",
     "vite-plugin-compression": "^0.5.1",
+    "vite-plugin-oxlint": "^1.4.0",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0"
   },

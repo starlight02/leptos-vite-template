@@ -1,7 +1,7 @@
 // 🎉 使用虚拟模块自动加载 WASM
 import 'virtual:wasm-init';
 // 🎨 导入样式文件
-import '@assets/styles.css';
+import '@/assets/styles.css';
 // 📦 按需导入 MDUI 样式和功能（支持 Tree Shaking）
 import '@/plugins/mdui.ts';
 
