@@ -121,6 +121,9 @@ jobs:
       # 设置 GitHub Pages
       - name: Setup Pages
         uses: actions/configure-pages@v4
+        with:
+          # 自动启用 Pages 如果尚未启用
+          enablement: true
 
       # 上传构建产物
       - name: Upload artifact
