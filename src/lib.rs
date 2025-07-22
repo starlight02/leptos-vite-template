@@ -19,8 +19,8 @@ pub fn App() -> impl IntoView {
     view! {
         <div class="app-container">
             <div class="hero-section">
-                // 🖼️ 使用 public 目录中的静态资源（绝对路径）
-                <img src="/icons/logo.svg" alt="Leptos Logo" class="leptos-logo" />
+                // 🖼️ 使用 public 目录中的静态资源（相对路径，兼容 GitHub Pages）
+                <img src="icons/logo.svg" alt="Leptos Logo" class="leptos-logo" />
                 <h1>"Leptos + Vite SPA Demo1"</h1>
                 <p>"静态资源演示 - Logo 来自 /public/icons/logo.svg"</p>
             </div>
