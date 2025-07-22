@@ -5,8 +5,8 @@ on:
   # 标签推送触发
   push:
     tags:
-      - '*'
-  
+      - "*"
+
   # 手动触发选项
   workflow_dispatch:
 
@@ -24,29 +24,29 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       # 设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          
+          node-version: "20"
+
       # 设置 pnpm 包管理器
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: latest
-          
+
       # 配置 pnpm 环境变量
       - name: Get pnpm store directory
         shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-          
+
       # 配置 pnpm 依赖缓存
       - name: Cache pnpm dependencies
         uses: actions/cache@v4
@@ -55,13 +55,13 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
-          
+
       # 安装 Rust 工具链
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
           targets: wasm32-unknown-unknown
-          
+
       # 配置 Rust 依赖缓存
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -73,17 +73,17 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-          
+
       # 安装 wasm-pack
       - name: Install wasm-pack
         run: |
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          
+
       # 安装 wasm-bindgen-cli
       - name: Install wasm-bindgen-cli
         run: |
           cargo install wasm-bindgen-cli --locked
-          
+
       # 安装 wasm-opt 优化工具
       - name: Install wasm-opt
         run: |
@@ -93,13 +93,13 @@ jobs:
           tar -xzf binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz
           sudo cp binaryen-${BINARYEN_VERSION}/bin/wasm-opt /usr/local/bin/
           wasm-opt --version
-          
+
       # 安装项目依赖
       - name: Install dependencies
         run: |
-          pnpm install --frozen-lockfile
+          pnpm install --no-frozen-lockfile
           echo "✅ Dependencies installed successfully"
-          
+
       # 构建项目
       - name: Build project
         env:
@@ -111,28 +111,28 @@ jobs:
           echo "Base path will be: /${GITHUB_REPOSITORY#*/}/"
           pnpm run build
           echo "✅ Build completed successfully"
-          
+
       # 验证构建产物
       - name: Verify build artifacts
         run: |
           echo "🔍 Running build verification..."
           node scripts/verify-build.js
-          
+
       # 设置 GitHub Pages
       - name: Setup Pages
         uses: actions/configure-pages@v4
-        
+
       # 上传构建产物
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
-          
+          path: "./dist"
+
       # 部署到 GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        
+
       # 输出部署结果
       - name: Output deployment URL
         run: |
