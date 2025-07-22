@@ -8,6 +8,8 @@
     "wasm:build": "wasm-pack build --target web --no-typescript --release",
     "build": "pnpm run wasm:build && vite build",
     "build:analyze": "pnpm run build && node scripts/analyze-bundle.js",
+    "build:verify": "pnpm run build && node scripts/verify-build.js",
+    "test:workflow": "node scripts/test-workflow.js",
     "preview": "vite preview",
     "clean": "rimraf pkg dist target/wasm32-unknown-unknown"
   },
@@ -22,7 +24,8 @@
     "vite-plugin-compression": "^0.5.1",
     "vite-plugin-oxlint": "^1.4.0",
     "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.5.0"
+    "vite-plugin-wasm": "^3.5.0",
+    "yaml": "^2.3.4"
   },
   "dependencies": {
     "mdui": "^2.1.4"

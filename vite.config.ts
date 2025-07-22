@@ -150,6 +150,11 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
+  
+  // GitHub Pages 部署配置
+  base: process.env.NODE_ENV === 'production' && process.env.GITHUB_REPOSITORY 
+    ? `/${process.env.GITHUB_REPOSITORY.split('/')[1]}/`
+    : '/',
   // 解析配置 - 只保留实际使用的别名
   resolve: {
     alias: {
