@@ -162,7 +162,7 @@ jobs:
           
           # 检查关键文件
           echo "🔍 Checking critical files:"
-          ls -la dist/index.html dist/404.html
+          ls -la dist/index.html
           
           echo "✅ Build verification completed"
 

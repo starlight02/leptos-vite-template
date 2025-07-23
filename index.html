@@ -1,115 +1,16 @@
-
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <title>Leptos + Vite Demo</title>
+  <title>%VITE_APP_TITLE%</title>
+  <base href="%VITE_BASE_URL%" />
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-  <script>
-    // GitHub Pages SPA 路由恢复脚本
-    // 这个脚本必须在应用启动前运行，以恢复从 404 页面传递的路由信息
-    (function() {
-      'use strict';
-      
-      // 调试模式
-      const DEBUG = new URLSearchParams(window.location.search).has('debug');
-      
-      function log(message, data) {
-        if (DEBUG) {
-          console.log('[Route Restore]', message, data || '');
-        }
-      }
-      
-      try {
-        const l = window.location;
-        log('Starting route restoration', {
-          href: l.href,
-          pathname: l.pathname,
-          search: l.search,
-          hash: l.hash
-        });
-        
-        // 检查 URL 是否包含编码的路由信息
-        // 格式: /?/route/path&encoded=search&params#hash
-        if (l.search.startsWith('?/')) {
-          const encodedRoute = l.search.slice(2); // 移除 '?/'
-          log('Found encoded route', encodedRoute);
-          
-          // 解析路由部分
-          let routePath = '';
-          let searchParams = '';
-          let hashPart = l.hash;
-          
-          // 分离路由路径和搜索参数
-          const ampIndex = encodedRoute.indexOf('&');
-          if (ampIndex !== -1) {
-            routePath = encodedRoute.substring(0, ampIndex);
-            searchParams = encodedRoute.substring(ampIndex + 1);
-          } else {
-            routePath = encodedRoute;
-          }
-          
-          // 解码特殊字符
-          routePath = routePath.replace(/~and~/g, '&');
-          searchParams = searchParams.replace(/~and~/g, '&');
-          
-          log('Parsed route components', {
-            routePath,
-            searchParams,
-            hashPart
-          });
-          
-          // 构建恢复的 URL
-          let restoredUrl = l.origin + l.pathname.replace(/\/$/, '') + '/' + routePath;
-          
-          if (searchParams) {
-            restoredUrl += '?' + searchParams;
-          }
-          
-          if (hashPart) {
-            restoredUrl += hashPart;
-          }
-          
-          log('Restored URL', restoredUrl);
-          
-          // 使用 history.replaceState 恢复 URL，不触发页面重新加载
-          const newPath = '/' + routePath + 
-                         (searchParams ? '?' + searchParams : '') + 
-                         (hashPart || '');
-          
-          log('Replacing history state', newPath);
-          history.replaceState(null, null, newPath);
-          
-          // 存储恢复的路由信息，供应用使用
-          window.__RESTORED_ROUTE__ = {
-            path: '/' + routePath,
-            search: searchParams ? '?' + searchParams : '',
-            hash: hashPart || '',
-            fullPath: newPath,
-            wasRestored: true
-          };
-          
-          log('Route restoration completed', window.__RESTORED_ROUTE__);
-        } else {
-          log('No encoded route found, normal page load');
-          window.__RESTORED_ROUTE__ = {
-            wasRestored: false
-          };
-        }
-        
-      } catch (error) {
-        console.error('[Route Restore] Error:', error);
-        // 如果路由恢复失败，确保应用仍能正常启动
-        window.__RESTORED_ROUTE__ = {
-          wasRestored: false,
-          error: error.message
-        };
-      }
-    })();
-  </script>
 </head>
+
 <body>
   <div id="leptos-app"></div>
   <script type="module" src="/main.ts"></script>
 </body>
+
 </html>
