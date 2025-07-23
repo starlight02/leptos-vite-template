@@ -7,6 +7,7 @@ Cargo.lock
 /pkg/
 
 # Node.js
+.logs/
 node_modules/
 npm-debug.log*
 yarn-debug.log*

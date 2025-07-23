@@ -2,13 +2,19 @@ name: Build and Deploy to GitHub Pages
 
 # 触发条件
 on:
-  # 标签推送触发
+  # 主分支推送和标签推送触发
   push:
     tags:
-      - "*"
+      - "v*"
 
   # 手动触发选项
   workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug mode'
+        required: false
+        default: 'false'
+        type: boolean
 
 # 权限设置
 permissions:
@@ -100,23 +106,65 @@ jobs:
           pnpm install --no-frozen-lockfile
           echo "✅ Dependencies installed successfully"
 
-      # 构建项目
-      - name: Build project
+      # 显示构建配置
+      - name: Show build configuration
+        run: |
+          echo "📋 GitHub Pages build configuration:"
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository name: ${{ github.repository.split('/')[1] }}"
+          echo "Expected base URL: /${{ github.repository.split('/')[1] }}/"
+
+      # 构建项目 - 使用环境感知构建脚本
+      - name: Build project for GitHub Pages
         env:
           NODE_ENV: production
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_ACTIONS: true
+          DEBUG_MODE: ${{ github.event.inputs.debug == 'true' }}
+          # 确保环境变量正确设置给构建脚本
+          VITE_BASE_URL: /${{ github.event.repository.name }}/
+          VITE_ENV: github-pages
+          VITE_APP_TITLE: Leptos + Vite Demo
         run: |
-          echo "🔨 Starting build process..."
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Base path will be: /${GITHUB_REPOSITORY#*/}/"
-          pnpm run build
-          echo "✅ Build completed successfully"
+          echo "🔨 Starting GitHub Pages build process..."
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository name: ${{ github.event.repository.name }}"
+          echo "Debug mode: ${{ github.event.inputs.debug }}"
+          echo "Using environment-aware build system..."
+          
+          # 显示构建环境信息
+          echo "🌍 Build environment:"
+          echo "  Node.js version: $(node --version)"
+          echo "  pnpm version: $(pnpm --version)"
+          echo "  Rust version: $(rustc --version)"
+          echo "  wasm-pack version: $(wasm-pack --version)"
+          
+          # 显示环境变量配置
+          echo "🔧 Environment configuration:"
+          echo "  VITE_BASE_URL: $VITE_BASE_URL"
+          echo "  VITE_ENV: $VITE_ENV"
+          echo "  VITE_APP_TITLE: $VITE_APP_TITLE"
+          echo "  GITHUB_ACTIONS: $GITHUB_ACTIONS"
+          
+          # 使用专门的 GitHub Pages 构建脚本
+          pnpm run build:github
+          
+          echo "✅ GitHub Pages build completed successfully"
 
       # 验证构建产物
       - name: Verify build artifacts
         run: |
-          echo "🔍 Running build verification..."
-          node scripts/verify-build.js
+          echo "🔍 Checking build artifacts..."
+          
+          # 显示构建统计
+          echo "📊 Build statistics:"
+          echo "Dist directory size: $(du -sh dist | cut -f1)"
+          echo "Number of files: $(find dist -type f | wc -l)"
+          
+          # 检查关键文件
+          echo "🔍 Checking critical files:"
+          ls -la dist/index.html dist/404.html
+          
+          echo "✅ Build verification completed"
 
       # 设置 GitHub Pages
       - name: Setup Pages
@@ -141,3 +189,35 @@ jobs:
         run: |
           echo "🚀 Deployment completed successfully!"
           echo "📱 Your app is now available at: ${{ steps.deployment.outputs.page_url }}"
+          echo "🔗 Direct links to test:"
+          echo "  - Home: ${{ steps.deployment.outputs.page_url }}"
+          echo "  - Complex Props Demo: ${{ steps.deployment.outputs.page_url }}complex-props-demo"
+          echo "  - MDUI Demo: ${{ steps.deployment.outputs.page_url }}md-demo"
+          echo "  - MDUI JS API Demo: ${{ steps.deployment.outputs.page_url }}md-js-api-demo"
+          echo ""
+          echo "🧪 To test SPA routing, try accessing the direct links above."
+          echo "They should work without 404 errors thanks to the SPA routing system."
+
+      # 构建失败时的清理和调试信息
+      - name: Debug build failure
+        if: failure()
+        run: |
+          echo "❌ Build or deployment failed. Collecting debug information..."
+          
+          echo "📁 Workspace contents:"
+          ls -la
+          
+          echo "📦 Package.json scripts:"
+          cat package.json | grep -A 20 '"scripts"'
+          
+          echo "🔍 Environment files:"
+          ls -la .env* || echo "No .env files found"
+          
+          echo "📂 Dist directory (if exists):"
+          ls -la dist/ || echo "Dist directory not found"
+          
+          echo "🦀 Rust/WASM build artifacts:"
+          ls -la pkg/ || echo "Pkg directory not found"
+          
+          echo "📋 Recent logs:"
+          tail -50 /tmp/*.log || echo "No log files found"

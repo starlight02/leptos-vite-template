@@ -6,6 +6,7 @@ import '@/assets/styles.css';
 import '@/plugins/mdui.ts';
 
 console.log('🚀 Main.ts loaded - WASM auto-import configured!');
+console.log(`📍 Base URL: ${import.meta.env.VITE_BASE_URL || '/'}`);
 
 // 您可以在这里添加其他初始化代码
 // 例如：全局事件监听器等

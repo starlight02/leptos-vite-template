@@ -151,10 +151,8 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   
-  // GitHub Pages 部署配置
-  base: process.env.NODE_ENV === 'production' && process.env.GITHUB_REPOSITORY 
-    ? `/${process.env.GITHUB_REPOSITORY.split('/')[1]}/`
-    : '/',
+  // 基础路径配置 - 从环境变量读取，支持不同部署环境
+  base: process.env.VITE_BASE_URL || '/',
   // 解析配置 - 只保留实际使用的别名
   resolve: {
     alias: {
