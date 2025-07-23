@@ -37,7 +37,7 @@ pub fn App() -> impl IntoView {
 
             <Router base=base_url>
                 <nav>
-                    <A href="/">Home</A>
+                    <A href="">Home</A>
                     " | "
                     <A href="complex-props-demo">Complex Props Demo</A>
                     " | "
