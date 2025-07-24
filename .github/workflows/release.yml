@@ -736,7 +736,7 @@ jobs:
               [ -z "$hash" ] && continue
               
               # 解析 conventional commit 格式
-              if [[ "$subject" =~ ^([a-zA-Z]+)(\([^)]+\))?(!)?:\ (.+)$ ]]; then
+              if [[ "$subject" =~ ^([a-zA-Z]+)(\([^)]+\))?(!)?:[[:space:]](.+)$ ]]; then
                 TYPE="${BASH_REMATCH[1]}"
                 SCOPE="${BASH_REMATCH[2]}"
                 BREAKING_MARKER="${BASH_REMATCH[3]}"
