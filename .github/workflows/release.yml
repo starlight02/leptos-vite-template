@@ -1,0 +1,1057 @@
+name: Create Release
+
+# 触发条件：当推送版本标签时
+on:
+  push:
+    tags:
+      - "v*"
+
+  # 手动触发选项 (用于测试)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create release for'
+        required: true
+        default: 'v0.1.0'
+        type: string
+      debug:
+        description: 'Enable debug mode'
+        required: false
+        default: false
+        type: boolean
+
+# 权限设置
+permissions:
+  contents: write    # 需要写权限来创建 Release
+  actions: read      # 读取 Actions 相关信息
+  id-token: write    # 用于身份验证
+
+# 确保只有一个发布任务同时运行
+concurrency:
+  group: "release"
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史，用于生成 changelog
+
+      # 提取版本信息
+      - name: Extract version info
+        id: version
+        run: |
+          # 从 tag 或手动输入获取版本
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_NAME="${{ github.event.inputs.tag }}"
+          else
+            TAG_NAME="${{ github.ref_name }}"
+          fi
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          
+          # 提取版本号 (去掉 v 前缀)
+          VERSION=${TAG_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # 检测是否为预发布版本 (包含 - 的版本号)
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            
+            # 提取预发布标识符
+            PRERELEASE_ID=${VERSION#*-}
+            echo "prerelease_id=$PRERELEASE_ID" >> $GITHUB_OUTPUT
+            
+            # 提取基础版本号 (去掉预发布标识符)
+            BASE_VERSION=${VERSION%-*}
+            echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "prerelease_id=" >> $GITHUB_OUTPUT
+            echo "base_version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+          
+          # 解析语义化版本号组件
+          if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-.*)?$ ]]; then
+            MAJOR=${BASH_REMATCH[1]}
+            MINOR=${BASH_REMATCH[2]}
+            PATCH=${BASH_REMATCH[3]}
+            
+            echo "major=$MAJOR" >> $GITHUB_OUTPUT
+            echo "minor=$MINOR" >> $GITHUB_OUTPUT
+            echo "patch=$PATCH" >> $GITHUB_OUTPUT
+            
+            echo "✅ Parsed semantic version: $MAJOR.$MINOR.$PATCH"
+          else
+            echo "❌ Failed to parse semantic version components"
+            exit 1
+          fi
+          
+          # 获取仓库信息
+          REPO_NAME="${{ github.event.repository.name }}"
+          REPO_OWNER="${{ github.repository_owner }}"
+          FULL_REPO="${{ github.repository }}"
+          
+          echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+          echo "repo_owner=$REPO_OWNER" >> $GITHUB_OUTPUT
+          echo "full_repo=$FULL_REPO" >> $GITHUB_OUTPUT
+          
+          # 生成标准化的文件命名
+          PACKAGE_NAME="${REPO_NAME}-${TAG_NAME}-wasm32-unknown-unknown.zip"
+          CHECKSUM_NAME="${REPO_NAME}-${TAG_NAME}-checksums.txt"
+          
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "checksum_name=$CHECKSUM_NAME" >> $GITHUB_OUTPUT
+          
+          # 生成 Release 标题和描述模板
+          if [ "${{ steps.version.outputs.is_prerelease }}" = "true" ]; then
+            RELEASE_TITLE="$TAG_NAME (Pre-release)"
+            RELEASE_TYPE="Pre-release"
+          else
+            RELEASE_TITLE="$TAG_NAME"
+            RELEASE_TYPE="Release"
+          fi
+          
+          echo "release_title=$RELEASE_TITLE" >> $GITHUB_OUTPUT
+          echo "release_type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
+          
+          # 获取当前时间戳
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          
+          echo "📋 Version Information:"
+          echo "  Tag: $TAG_NAME"
+          echo "  Version: $VERSION"
+          echo "  Base Version: ${{ steps.version.outputs.base_version }}"
+          echo "  Major: $MAJOR, Minor: $MINOR, Patch: $PATCH"
+          echo "  Is Prerelease: ${{ steps.version.outputs.is_prerelease }}"
+          echo "  Prerelease ID: ${{ steps.version.outputs.prerelease_id }}"
+          echo "  Repository: $REPO_NAME ($FULL_REPO)"
+          echo "  Package Name: $PACKAGE_NAME"
+          echo "  Checksum Name: $CHECKSUM_NAME"
+          echo "  Release Title: $RELEASE_TITLE"
+          echo "  Release Type: $RELEASE_TYPE"
+          echo "  Timestamp: $TIMESTAMP"
+
+      # 验证版本格式
+      - name: Validate version format
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # 验证标签格式 (必须以 v 开头)
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.*)?$ ]]; then
+            echo "❌ Invalid tag format: $TAG_NAME"
+            echo "Expected format: v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+          
+          echo "✅ Version format is valid: $TAG_NAME"
+
+      # 检查是否已存在同名 Release
+      - name: Check existing release
+        id: check_release
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          
+          # 使用 GitHub CLI 检查是否存在同名 Release
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "⚠️  Release $TAG_NAME already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+            
+            # 获取现有 Release 信息
+            gh release view "$TAG_NAME" --json name,tagName,isPrerelease,publishedAt
+          else
+            echo "✅ Release $TAG_NAME does not exist, proceeding with creation"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # 如果 Release 已存在，询问是否继续
+      - name: Handle existing release
+        if: steps.check_release.outputs.exists == 'true'
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          
+          if [ "${{ github.event.inputs.debug }}" = "true" ]; then
+            echo "🔧 Debug mode: Continuing despite existing release"
+          else
+            echo "❌ Release $TAG_NAME already exists. Stopping workflow."
+            echo "To override, run this workflow manually with debug mode enabled."
+            exit 1
+          fi
+
+      # 设置 Node.js 环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 设置 pnpm 包管理器
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # 配置 pnpm 环境变量
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      # 配置 pnpm 依赖缓存
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # 安装 Rust 工具链
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+
+      # 配置 Rust 依赖缓存
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # 缓存 WASM 工具
+      - name: Cache WASM tools
+        id: cache-wasm-tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            /usr/local/bin/wasm-opt
+            ~/.wasm-pack
+          key: ${{ runner.os }}-wasm-tools-v3
+          restore-keys: |
+            ${{ runner.os }}-wasm-tools-
+
+      # 确保 cargo bin 在 PATH 中
+      - name: Setup PATH
+        run: |
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          mkdir -p ~/.cargo/bin
+
+      # 安装 wasm-pack（如果缓存未命中）
+      - name: Install wasm-pack
+        if: steps.cache-wasm-tools.outputs.cache-hit != 'true'
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # 安装 wasm-bindgen-cli（使用预编译版本）
+      - name: Install wasm-bindgen-cli
+        if: steps.cache-wasm-tools.outputs.cache-hit != 'true'
+        run: |
+          # 使用固定版本以确保兼容性
+          WASM_BINDGEN_VERSION="0.2.95"
+          echo "Installing wasm-bindgen-cli version: $WASM_BINDGEN_VERSION"
+          
+          # 下载预编译版本
+          wget https://github.com/rustwasm/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz
+          tar -xzf wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz
+          
+          # 复制到 cargo bin 目录
+          cp wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen ~/.cargo/bin/
+          cp wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen-test-runner ~/.cargo/bin/
+          
+          # 设置执行权限
+          chmod +x ~/.cargo/bin/wasm-bindgen
+          chmod +x ~/.cargo/bin/wasm-bindgen-test-runner
+          
+          # 验证安装
+          wasm-bindgen --version
+
+      # 安装 wasm-opt 优化工具（如果缓存未命中）
+      - name: Install wasm-opt
+        if: steps.cache-wasm-tools.outputs.cache-hit != 'true'
+        run: |
+          # 使用固定版本以确保稳定性
+          BINARYEN_VERSION="version_118"
+          echo "Installing binaryen version: $BINARYEN_VERSION"
+          
+          wget https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz
+          tar -xzf binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz
+          sudo cp binaryen-${BINARYEN_VERSION}/bin/wasm-opt /usr/local/bin/
+          
+          # 设置执行权限
+          sudo chmod +x /usr/local/bin/wasm-opt
+          
+          # 验证安装
+          wasm-opt --version
+
+      # 验证工具安装
+      - name: Verify WASM tools
+        run: |
+          echo "🔧 Verifying WASM tools installation:"
+          echo "PATH: $PATH"
+          echo "Checking wasm-pack..."
+          wasm-pack --version
+          echo "Checking wasm-bindgen..."
+          wasm-bindgen --version
+          echo "Checking wasm-opt..."
+          wasm-opt --version
+
+      # 安装项目依赖
+      - name: Install dependencies
+        run: |
+          pnpm install --no-frozen-lockfile
+          echo "✅ Dependencies installed successfully"
+
+      # 输出构建配置信息
+      - name: Show build configuration
+        run: |
+          echo "🔨 Release Build Configuration:"
+          echo "  Repository: ${{ github.repository }}"
+          echo "  Tag: ${{ steps.version.outputs.tag_name }}"
+          echo "  Version: ${{ steps.version.outputs.version }}"
+          echo "  Is Prerelease: ${{ steps.version.outputs.is_prerelease }}"
+          echo "  Package Name: ${{ steps.version.outputs.package_name }}"
+          echo "  Debug Mode: ${{ github.event.inputs.debug }}"
+          echo ""
+          echo "🌍 Build Environment:"
+          echo "  Runner OS: ${{ runner.os }}"
+          echo "  Node.js version: $(node --version)"
+          echo "  pnpm version: $(pnpm --version)"
+          echo "  Rust version: $(rustc --version)"
+          echo "  wasm-pack version: $(wasm-pack --version)"
+          echo "  GitHub Event: ${{ github.event_name }}"
+          echo "  Workflow: ${{ github.workflow }}"
+          echo "  Run ID: ${{ github.run_id }}"
+
+      # 构建项目 - 使用生产环境配置
+      - name: Build project for production
+        env:
+          NODE_ENV: production
+          GITHUB_ACTIONS: true
+          # 生产环境变量 - 不包含 GitHub Pages 特定配置
+          VITE_ENV: production
+          VITE_APP_TITLE: ${{ steps.version.outputs.repo_name }}
+        run: |
+          echo "🔨 Starting production build process..."
+          echo "Repository: ${{ github.repository }}"
+          echo "Version: ${{ steps.version.outputs.tag_name }}"
+          echo "Build type: Production Release (not GitHub Pages)"
+          
+          # 显示构建环境信息
+          echo "🌍 Production build environment:"
+          echo "  NODE_ENV: $NODE_ENV"
+          echo "  VITE_ENV: $VITE_ENV"
+          echo "  VITE_APP_TITLE: $VITE_APP_TITLE"
+          echo "  GITHUB_ACTIONS: $GITHUB_ACTIONS"
+          
+          # 使用生产环境构建命令
+          echo "📦 Running production build..."
+          pnpm run build
+          
+          echo "✅ Production build completed successfully"
+
+      # 验证构建产物
+      - name: Verify build artifacts
+        run: |
+          echo "🔍 Verifying build artifacts..."
+          
+          # 检查 dist 目录是否存在
+          if [ ! -d "dist" ]; then
+            echo "❌ Build failed: dist directory not found"
+            exit 1
+          fi
+          
+          # 检查关键文件
+          if [ ! -f "dist/index.html" ]; then
+            echo "❌ Build failed: index.html not found in dist/"
+            exit 1
+          fi
+          
+          # 显示构建统计
+          echo "📊 Build statistics:"
+          echo "  Dist directory size: $(du -sh dist | cut -f1)"
+          echo "  Number of files: $(find dist -type f | wc -l)"
+          echo "  Total files size: $(find dist -type f -exec ls -l {} + | awk '{sum += $5} END {print sum " bytes"}')"
+          
+          # 显示目录结构
+          echo "📂 Build output structure:"
+          find dist -type f | head -20 | while read file; do
+            size=$(ls -lh "$file" | awk '{print $5}')
+            echo "  $file ($size)"
+          done
+          
+          # 检查 WASM 文件
+          wasm_files=$(find dist -name "*.wasm" | wc -l)
+          js_files=$(find dist -name "*.js" | wc -l)
+          
+          echo "📋 Asset summary:"
+          echo "  WASM files: $wasm_files"
+          echo "  JavaScript files: $js_files"
+          echo "  CSS files: $(find dist -name "*.css" | wc -l)"
+          echo "  HTML files: $(find dist -name "*.html" | wc -l)"
+          
+          if [ $wasm_files -eq 0 ]; then
+            echo "⚠️  Warning: No WASM files found in build output"
+          else
+            echo "✅ WASM files found in build output"
+          fi
+          
+          echo "✅ Build verification completed successfully"
+
+      # 构建完整性检查
+      - name: Build integrity check
+        run: |
+          echo "🔒 Performing build integrity check..."
+          
+          # 检查是否有构建错误或警告文件
+          if [ -f "dist/build-errors.log" ]; then
+            echo "❌ Build errors detected:"
+            cat dist/build-errors.log
+            exit 1
+          fi
+          
+          # 验证关键资源文件
+          critical_files=("index.html")
+          for file in "${critical_files[@]}"; do
+            if [ ! -f "dist/$file" ]; then
+              echo "❌ Critical file missing: $file"
+              exit 1
+            fi
+            
+            # 检查文件大小
+            size=$(stat -c%s "dist/$file")
+            if [ $size -eq 0 ]; then
+              echo "❌ Critical file is empty: $file"
+              exit 1
+            fi
+            
+            echo "✅ Critical file verified: $file ($size bytes)"
+          done
+          
+          # 检查是否包含开发环境特定的内容
+          if grep -r "localhost" dist/ 2>/dev/null; then
+            echo "⚠️  Warning: Found localhost references in build output"
+            grep -r "localhost" dist/ || true
+          fi
+          
+          # 检查是否包含 GitHub Pages 特定的路径
+          if grep -r "github\.io" dist/ 2>/dev/null; then
+            echo "⚠️  Warning: Found GitHub Pages references in build output"
+            grep -r "github\.io" dist/ || true
+          fi
+          
+          echo "✅ Build integrity check passed"
+
+      # 创建发布包
+      - name: Create release package
+        run: |
+          echo "📦 Creating release package..."
+          
+          # 获取版本信息
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
+          CHECKSUM_NAME="${{ steps.version.outputs.checksum_name }}"
+          
+          echo "Package name: $PACKAGE_NAME"
+          echo "Checksum file: $CHECKSUM_NAME"
+          
+          # 创建临时目录用于打包
+          mkdir -p release-temp
+          
+          # 复制构建产物到临时目录
+          echo "📂 Copying build artifacts..."
+          cp -r dist/* release-temp/
+          
+          # 添加版本信息文件
+          echo "📝 Creating version info file..."
+          cat > release-temp/VERSION.txt << EOF
+          Release Information
+          ===================
+          
+          Tag: ${{ steps.version.outputs.tag_name }}
+          Version: ${{ steps.version.outputs.version }}
+          Build Date: ${{ steps.version.outputs.timestamp }}
+          Repository: ${{ steps.version.outputs.full_repo }}
+          Platform: wasm32-unknown-unknown
+          Build Type: Production Release
+          
+          Components:
+          - Major: ${{ steps.version.outputs.major }}
+          - Minor: ${{ steps.version.outputs.minor }}
+          - Patch: ${{ steps.version.outputs.patch }}
+          - Is Prerelease: ${{ steps.version.outputs.is_prerelease }}
+          - Prerelease ID: ${{ steps.version.outputs.prerelease_id }}
+          
+          Build Environment:
+          - Node.js: $(node --version)
+          - Rust: $(rustc --version)
+          - wasm-pack: $(wasm-pack --version)
+          - Runner: ${{ runner.os }}
+          EOF
+          
+          # 添加 README 文件
+          echo "📖 Creating package README..."
+          cat > release-temp/README.md << EOF
+          # ${{ steps.version.outputs.repo_name }} - ${{ steps.version.outputs.tag_name }}
+          
+          This is a production build of ${{ steps.version.outputs.repo_name }} for the wasm32-unknown-unknown platform.
+          
+          ## Installation
+          
+          1. Extract the zip file to your desired location
+          2. Serve the files using a web server (due to CORS restrictions)
+          3. Open \`index.html\` in your browser
+          
+          ## Files Included
+          
+          - \`index.html\` - Main application entry point
+          - \`*.js\` - JavaScript modules and bindings
+          - \`*.wasm\` - WebAssembly binary
+          - \`*.css\` - Stylesheets
+          - \`VERSION.txt\` - Build information
+          
+          ## Requirements
+          
+          - Modern web browser with WebAssembly support
+          - Web server (for local development, use \`python -m http.server\` or similar)
+          
+          ## Build Information
+          
+          - Version: ${{ steps.version.outputs.version }}
+          - Build Date: ${{ steps.version.outputs.timestamp }}
+          - Platform: wasm32-unknown-unknown
+          - Repository: https://github.com/${{ steps.version.outputs.full_repo }}
+          EOF
+          
+          echo "✅ Package preparation completed"
+
+      # 创建 ZIP 压缩包
+      - name: Create ZIP archive
+        run: |
+          echo "🗜️  Creating ZIP archive..."
+          
+          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
+          
+          # 创建 ZIP 文件
+          cd release-temp
+          zip -r "../$PACKAGE_NAME" . -x "*.DS_Store" "*.git*"
+          cd ..
+          
+          # 验证 ZIP 文件
+          if [ ! -f "$PACKAGE_NAME" ]; then
+            echo "❌ Failed to create ZIP file: $PACKAGE_NAME"
+            exit 1
+          fi
+          
+          # 显示 ZIP 文件信息
+          ZIP_SIZE=$(ls -lh "$PACKAGE_NAME" | awk '{print $5}')
+          ZIP_SIZE_BYTES=$(stat -c%s "$PACKAGE_NAME")
+          
+          echo "📊 ZIP Archive Information:"
+          echo "  File: $PACKAGE_NAME"
+          echo "  Size: $ZIP_SIZE ($ZIP_SIZE_BYTES bytes)"
+          echo "  Contents:"
+          
+          # 显示 ZIP 内容
+          unzip -l "$PACKAGE_NAME" | head -20
+          
+          echo "✅ ZIP archive created successfully"
+
+      # 生成校验和
+      - name: Generate checksums
+        run: |
+          echo "🔐 Generating checksums..."
+          
+          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
+          CHECKSUM_NAME="${{ steps.version.outputs.checksum_name }}"
+          
+          # 生成多种校验和
+          echo "Generating SHA256 checksum..."
+          SHA256_HASH=$(sha256sum "$PACKAGE_NAME" | cut -d' ' -f1)
+          
+          echo "Generating MD5 checksum..."
+          MD5_HASH=$(md5sum "$PACKAGE_NAME" | cut -d' ' -f1)
+          
+          # 创建校验和文件
+          cat > "$CHECKSUM_NAME" << EOF
+          Checksums for $PACKAGE_NAME
+          ============================
+          
+          Generated: ${{ steps.version.outputs.timestamp }}
+          File Size: $(stat -c%s "$PACKAGE_NAME") bytes
+          
+          SHA256: $SHA256_HASH
+          MD5:    $MD5_HASH
+          
+          Verification Instructions:
+          -------------------------
+          
+          To verify the integrity of the downloaded file:
+          
+          Linux/macOS:
+            sha256sum -c $CHECKSUM_NAME
+            # or
+            echo "$SHA256_HASH  $PACKAGE_NAME" | sha256sum -c
+          
+          Windows (PowerShell):
+            \$hash = Get-FileHash -Algorithm SHA256 "$PACKAGE_NAME"
+            \$hash.Hash -eq "$SHA256_HASH"
+          EOF
+          
+          # 验证校验和文件
+          if [ ! -f "$CHECKSUM_NAME" ]; then
+            echo "❌ Failed to create checksum file: $CHECKSUM_NAME"
+            exit 1
+          fi
+          
+          echo "📋 Checksum Information:"
+          echo "  SHA256: $SHA256_HASH"
+          echo "  MD5:    $MD5_HASH"
+          echo "  File:   $CHECKSUM_NAME"
+          
+          echo "✅ Checksums generated successfully"
+
+      # 验证打包结果
+      - name: Validate package
+        run: |
+          echo "🔍 Validating release package..."
+          
+          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
+          CHECKSUM_NAME="${{ steps.version.outputs.checksum_name }}"
+          
+          # 检查文件存在
+          if [ ! -f "$PACKAGE_NAME" ]; then
+            echo "❌ Package file not found: $PACKAGE_NAME"
+            exit 1
+          fi
+          
+          if [ ! -f "$CHECKSUM_NAME" ]; then
+            echo "❌ Checksum file not found: $CHECKSUM_NAME"
+            exit 1
+          fi
+          
+          # 检查文件大小
+          PACKAGE_SIZE=$(stat -c%s "$PACKAGE_NAME")
+          MIN_SIZE=1024  # 最小 1KB
+          MAX_SIZE=104857600  # 最大 100MB
+          
+          if [ $PACKAGE_SIZE -lt $MIN_SIZE ]; then
+            echo "❌ Package too small: $PACKAGE_SIZE bytes (minimum: $MIN_SIZE)"
+            exit 1
+          fi
+          
+          if [ $PACKAGE_SIZE -gt $MAX_SIZE ]; then
+            echo "⚠️  Warning: Package is large: $PACKAGE_SIZE bytes (maximum recommended: $MAX_SIZE)"
+          fi
+          
+          # 验证 ZIP 文件完整性
+          echo "🔍 Testing ZIP integrity..."
+          if ! unzip -t "$PACKAGE_NAME" >/dev/null 2>&1; then
+            echo "❌ ZIP file is corrupted"
+            exit 1
+          fi
+          
+          # 验证校验和
+          echo "🔐 Verifying checksums..."
+          EXPECTED_SHA256=$(grep "SHA256:" "$CHECKSUM_NAME" | cut -d' ' -f2)
+          ACTUAL_SHA256=$(sha256sum "$PACKAGE_NAME" | cut -d' ' -f1)
+          
+          if [ "$EXPECTED_SHA256" != "$ACTUAL_SHA256" ]; then
+            echo "❌ SHA256 checksum mismatch"
+            echo "  Expected: $EXPECTED_SHA256"
+            echo "  Actual:   $ACTUAL_SHA256"
+            exit 1
+          fi
+          
+          echo "📦 Package Validation Summary:"
+          echo "  Package: $PACKAGE_NAME"
+          echo "  Size: $(ls -lh "$PACKAGE_NAME" | awk '{print $5}')"
+          echo "  Checksum: $CHECKSUM_NAME"
+          echo "  SHA256: $ACTUAL_SHA256"
+          echo "  ZIP Integrity: ✅ Valid"
+          echo "  Checksum Verification: ✅ Valid"
+          
+          echo "✅ Package validation completed successfully"
+
+      # 生成 Changelog
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "📝 Generating changelog..."
+          
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          REPO_NAME="${{ steps.version.outputs.repo_name }}"
+          
+          # 获取上一个标签
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^$TAG_NAME$" | head -n 1)
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "📋 No previous tag found, generating changelog from first commit"
+            COMMIT_RANGE=$(git rev-list --max-parents=0 HEAD)..HEAD
+            PREVIOUS_TAG="Initial Release"
+          else
+            echo "📋 Previous tag: $PREVIOUS_TAG"
+            COMMIT_RANGE="$PREVIOUS_TAG..$TAG_NAME"
+          fi
+          
+          echo "📊 Commit range: $COMMIT_RANGE"
+          
+          # 获取提交历史
+          COMMITS=$(git log --pretty=format:"%h|%s|%an|%ad" --date=short "$COMMIT_RANGE" 2>/dev/null || git log --pretty=format:"%h|%s|%an|%ad" --date=short)
+          
+          if [ -z "$COMMITS" ]; then
+            echo "⚠️  No commits found in range, creating minimal changelog"
+            CHANGELOG_CONTENT="## What's Changed\n\n- Initial release of $REPO_NAME $TAG_NAME"
+          else
+            echo "📝 Processing commits for changelog generation..."
+            
+            # 初始化分类数组
+            FEATURES=""
+            FIXES=""
+            DOCS=""
+            STYLE=""
+            REFACTOR=""
+            PERF=""
+            TEST=""
+            CHORE=""
+            BREAKING=""
+            OTHER=""
+            
+            # 处理每个提交
+            while IFS='|' read -r hash subject author date; do
+              # 跳过空行
+              [ -z "$hash" ] && continue
+              
+              # 解析 conventional commit 格式
+              if [[ "$subject" =~ ^([a-zA-Z]+)(\([^)]+\))?(!)?:\ (.+)$ ]]; then
+                TYPE="${BASH_REMATCH[1]}"
+                SCOPE="${BASH_REMATCH[2]}"
+                BREAKING_MARKER="${BASH_REMATCH[3]}"
+                DESCRIPTION="${BASH_REMATCH[4]}"
+                
+                # 格式化提交信息
+                if [ -n "$SCOPE" ]; then
+                  FORMATTED="- **${SCOPE#(}${SCOPE%)}**: $DESCRIPTION ([${hash}](https://github.com/${{ steps.version.outputs.full_repo }}/commit/${hash}))"
+                else
+                  FORMATTED="- $DESCRIPTION ([${hash}](https://github.com/${{ steps.version.outputs.full_repo }}/commit/${hash}))"
+                fi
+                
+                # 检查是否为破坏性变更
+                if [ "$BREAKING_MARKER" = "!" ] || echo "$subject" | grep -q "BREAKING CHANGE"; then
+                  BREAKING="$BREAKING\n$FORMATTED"
+                fi
+                
+                # 按类型分类
+                case "$TYPE" in
+                  "feat"|"feature")
+                    FEATURES="$FEATURES\n$FORMATTED"
+                    ;;
+                  "fix"|"bugfix")
+                    FIXES="$FIXES\n$FORMATTED"
+                    ;;
+                  "docs"|"doc")
+                    DOCS="$DOCS\n$FORMATTED"
+                    ;;
+                  "style")
+                    STYLE="$STYLE\n$FORMATTED"
+                    ;;
+                  "refactor")
+                    REFACTOR="$REFACTOR\n$FORMATTED"
+                    ;;
+                  "perf"|"performance")
+                    PERF="$PERF\n$FORMATTED"
+                    ;;
+                  "test")
+                    TEST="$TEST\n$FORMATTED"
+                    ;;
+                  "chore"|"build"|"ci")
+                    CHORE="$CHORE\n$FORMATTED"
+                    ;;
+                  *)
+                    OTHER="$OTHER\n$FORMATTED"
+                    ;;
+                esac
+              else
+                # 非 conventional commit 格式，归类为其他
+                FORMATTED="- $subject ([${hash}](https://github.com/${{ steps.version.outputs.full_repo }}/commit/${hash}))"
+                OTHER="$OTHER\n$FORMATTED"
+              fi
+            done <<< "$COMMITS"
+            
+            # 构建 changelog 内容
+            CHANGELOG_CONTENT="## What's Changed in $TAG_NAME"
+            
+            if [ "${{ steps.version.outputs.is_prerelease }}" = "true" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n\n> ⚠️ **This is a pre-release version**. It may contain bugs or incomplete features."
+            fi
+            
+            CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n"
+            
+            # 添加破坏性变更 (最重要，放在最前面)
+            if [ -n "$BREAKING" ] && [ "$BREAKING" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 💥 Breaking Changes\n$BREAKING\n"
+            fi
+            
+            # 添加新功能
+            if [ -n "$FEATURES" ] && [ "$FEATURES" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### ✨ New Features\n$FEATURES\n"
+            fi
+            
+            # 添加 Bug 修复
+            if [ -n "$FIXES" ] && [ "$FIXES" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 🐛 Bug Fixes\n$FIXES\n"
+            fi
+            
+            # 添加性能优化
+            if [ -n "$PERF" ] && [ "$PERF" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### ⚡ Performance Improvements\n$PERF\n"
+            fi
+            
+            # 添加重构
+            if [ -n "$REFACTOR" ] && [ "$REFACTOR" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### ♻️ Code Refactoring\n$REFACTOR\n"
+            fi
+            
+            # 添加文档更新
+            if [ -n "$DOCS" ] && [ "$DOCS" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 📚 Documentation\n$DOCS\n"
+            fi
+            
+            # 添加样式更改
+            if [ -n "$STYLE" ] && [ "$STYLE" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 💄 Styles\n$STYLE\n"
+            fi
+            
+            # 添加测试
+            if [ -n "$TEST" ] && [ "$TEST" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 🧪 Tests\n$TEST\n"
+            fi
+            
+            # 添加构建/工具变更
+            if [ -n "$CHORE" ] && [ "$CHORE" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 🔧 Chores\n$CHORE\n"
+            fi
+            
+            # 添加其他变更
+            if [ -n "$OTHER" ] && [ "$OTHER" != "" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 📋 Other Changes\n$OTHER\n"
+            fi
+          fi
+          
+          # 添加版本信息和统计
+          COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
+          CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n---\n\n**Full Changelog**: https://github.com/${{ steps.version.outputs.full_repo }}/compare/${PREVIOUS_TAG}...${TAG_NAME}"
+          
+          if [ "$PREVIOUS_TAG" != "Initial Release" ]; then
+            CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n**Commits in this release**: $COMMIT_COUNT"
+          fi
+          
+          # 保存 changelog 到文件
+          echo -e "$CHANGELOG_CONTENT" > CHANGELOG.md
+          
+          # 输出到 GitHub Actions
+          {
+            echo "changelog<<EOF"
+            echo -e "$CHANGELOG_CONTENT"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          
+          echo "📋 Changelog Summary:"
+          echo "  Previous Tag: $PREVIOUS_TAG"
+          echo "  Current Tag: $TAG_NAME"
+          echo "  Commits Processed: $COMMIT_COUNT"
+          echo "  Changelog Length: $(echo -e "$CHANGELOG_CONTENT" | wc -l) lines"
+          
+          echo "✅ Changelog generated successfully"
+
+      # 显示生成的 Changelog
+      - name: Display changelog
+        run: |
+          echo "📖 Generated Changelog Preview:"
+          echo "================================"
+          cat CHANGELOG.md
+          echo "================================"
+          echo ""
+          echo "📊 Changelog Statistics:"
+          echo "  Total lines: $(wc -l < CHANGELOG.md)"
+          echo "  File size: $(ls -lh CHANGELOG.md | awk '{print $5}')"
+
+      # 创建 GitHub Release
+      - name: Create GitHub Release
+        id: create_release
+        run: |
+          echo "🚀 Creating GitHub Release..."
+          
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          RELEASE_TITLE="${{ steps.version.outputs.release_title }}"
+          IS_PRERELEASE="${{ steps.version.outputs.is_prerelease }}"
+          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
+          CHECKSUM_NAME="${{ steps.version.outputs.checksum_name }}"
+          
+          echo "📋 Release Information:"
+          echo "  Tag: $TAG_NAME"
+          echo "  Title: $RELEASE_TITLE"
+          echo "  Is Prerelease: $IS_PRERELEASE"
+          echo "  Package: $PACKAGE_NAME"
+          echo "  Checksums: $CHECKSUM_NAME"
+          
+          # 检查必要文件是否存在
+          if [ ! -f "$PACKAGE_NAME" ]; then
+            echo "❌ Package file not found: $PACKAGE_NAME"
+            exit 1
+          fi
+          
+          if [ ! -f "$CHECKSUM_NAME" ]; then
+            echo "❌ Checksum file not found: $CHECKSUM_NAME"
+            exit 1
+          fi
+          
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "❌ Changelog file not found: CHANGELOG.md"
+            exit 1
+          fi
+          
+          # 读取 changelog 内容
+          CHANGELOG_BODY=$(cat CHANGELOG.md)
+          
+          # 创建 Release
+          echo "📝 Creating release with GitHub CLI..."
+          
+          RELEASE_ARGS="--title \"$RELEASE_TITLE\""
+          RELEASE_ARGS="$RELEASE_ARGS --notes-file CHANGELOG.md"
+          
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            RELEASE_ARGS="$RELEASE_ARGS --prerelease"
+            echo "🔖 Creating as pre-release"
+          else
+            echo "🔖 Creating as stable release"
+          fi
+          
+          # 执行 Release 创建
+          eval "gh release create \"$TAG_NAME\" $RELEASE_ARGS"
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Release created successfully"
+            
+            # 获取 Release URL
+            RELEASE_URL=$(gh release view "$TAG_NAME" --json url --jq '.url')
+            echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+            echo "🔗 Release URL: $RELEASE_URL"
+          else
+            echo "❌ Failed to create release"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # 上传 Release 资产
+      - name: Upload release assets
+        run: |
+          echo "📤 Uploading release assets..."
+          
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
+          CHECKSUM_NAME="${{ steps.version.outputs.checksum_name }}"
+          
+          # 上传主要的发布包
+          echo "📦 Uploading package: $PACKAGE_NAME"
+          gh release upload "$TAG_NAME" "$PACKAGE_NAME" --clobber
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Package uploaded successfully"
+          else
+            echo "❌ Failed to upload package"
+            exit 1
+          fi
+          
+          # 上传校验和文件
+          echo "🔐 Uploading checksums: $CHECKSUM_NAME"
+          gh release upload "$TAG_NAME" "$CHECKSUM_NAME" --clobber
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Checksums uploaded successfully"
+          else
+            echo "❌ Failed to upload checksums"
+            exit 1
+          fi
+          
+          # 验证上传结果
+          echo "🔍 Verifying uploaded assets..."
+          ASSETS=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name')
+          
+          echo "📋 Uploaded assets:"
+          echo "$ASSETS" | while read asset; do
+            echo "  - $asset"
+          done
+          
+          # 检查必要的资产是否都已上传
+          if echo "$ASSETS" | grep -q "$PACKAGE_NAME"; then
+            echo "✅ Package asset verified"
+          else
+            echo "❌ Package asset missing"
+            exit 1
+          fi
+          
+          if echo "$ASSETS" | grep -q "$CHECKSUM_NAME"; then
+            echo "✅ Checksum asset verified"
+          else
+            echo "❌ Checksum asset missing"
+            exit 1
+          fi
+          
+          echo "✅ All assets uploaded and verified successfully"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # 发布完成总结
+      - name: Release summary
+        run: |
+          echo "🎉 Release completed successfully!"
+          echo "=================================="
+          
+          TAG_NAME="${{ steps.version.outputs.tag_name }}"
+          RELEASE_URL="${{ steps.create_release.outputs.release_url }}"
+          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
+          CHECKSUM_NAME="${{ steps.version.outputs.checksum_name }}"
+          
+          echo "📋 Release Summary:"
+          echo "  🏷️  Tag: $TAG_NAME"
+          echo "  📦 Package: $PACKAGE_NAME"
+          echo "  🔐 Checksums: $CHECKSUM_NAME"
+          echo "  🔗 URL: $RELEASE_URL"
+          echo "  📅 Created: ${{ steps.version.outputs.timestamp }}"
+          echo "  🎯 Type: ${{ steps.version.outputs.release_type }}"
+          
+          echo ""
+          echo "📥 Download Instructions:"
+          echo "  1. Visit: $RELEASE_URL"
+          echo "  2. Download: $PACKAGE_NAME"
+          echo "  3. Verify with: $CHECKSUM_NAME"
+          echo ""
+          echo "🔧 Quick Start:"
+          echo "  1. Extract the ZIP file"
+          echo "  2. Start a web server in the extracted directory"
+          echo "  3. Open index.html in your browser"
+          echo ""
+          echo "✨ Release $TAG_NAME is now available for download!"
+
+    outputs:
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      version: ${{ steps.version.outputs.version }}
+      repo_name: ${{ steps.version.outputs.repo_name }}
+      package_name: ${{ steps.version.outputs.package_name }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+      release_exists: ${{ steps.check_release.outputs.exists }}
