@@ -735,12 +735,24 @@ jobs:
               # 跳过空行
               [ -z "$hash" ] && continue
               
-              # 解析 conventional commit 格式
-              if [[ "$subject" =~ ^([a-zA-Z]+)(\([^)]+\))?(!)?:[[:space:]](.+)$ ]]; then
+              # 解析 conventional commit 格式 - 简化版本
+              if [[ "$subject" =~ ^([a-zA-Z]+).*:\ (.+)$ ]]; then
                 TYPE="${BASH_REMATCH[1]}"
-                SCOPE="${BASH_REMATCH[2]}"
-                BREAKING_MARKER="${BASH_REMATCH[3]}"
-                DESCRIPTION="${BASH_REMATCH[4]}"
+                DESCRIPTION="${BASH_REMATCH[2]}"
+                
+                # 检查是否有作用域
+                if [[ "$subject" =~ ^[a-zA-Z]+\(([^)]+)\) ]]; then
+                  SCOPE="(${BASH_REMATCH[1]})"
+                else
+                  SCOPE=""
+                fi
+                
+                # 检查破坏性变更标记
+                if [[ "$subject" =~ ! ]] || echo "$subject" | grep -q "BREAKING CHANGE"; then
+                  BREAKING_MARKER="!"
+                else
+                  BREAKING_MARKER=""
+                fi
                 
                 # 格式化提交信息
                 if [ -n "$SCOPE" ]; then
