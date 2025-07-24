@@ -730,136 +730,47 @@ jobs:
             BREAKING=""
             OTHER=""
             
+            # 简单的 changelog 生成 - 避免复杂的正则表达式
+            CHANGELOG_CONTENT="## What's Changed in $TAG_NAME\n\n"
+            
+            if [ "${{ steps.version.outputs.is_prerelease }}" = "true" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT> ⚠️ **This is a pre-release version**. It may contain bugs or incomplete features.\n\n"
+            fi
+            
+            # 按类型分组提交
+            FEATURES=""
+            FIXES=""
+            OTHER=""
+            
             # 处理每个提交
             while IFS='|' read -r hash subject author date; do
               # 跳过空行
               [ -z "$hash" ] && continue
               
-              # 解析 conventional commit 格式 - 简化版本
-              if [[ "$subject" =~ ^([a-zA-Z]+).*:\ (.+)$ ]]; then
-                TYPE="${BASH_REMATCH[1]}"
-                DESCRIPTION="${BASH_REMATCH[2]}"
-                
-                # 检查是否有作用域
-                if [[ "$subject" =~ ^[a-zA-Z]+\(([^)]+)\) ]]; then
-                  SCOPE="(${BASH_REMATCH[1]})"
-                else
-                  SCOPE=""
-                fi
-                
-                # 检查破坏性变更标记
-                if [[ "$subject" =~ ! ]] || echo "$subject" | grep -q "BREAKING CHANGE"; then
-                  BREAKING_MARKER="!"
-                else
-                  BREAKING_MARKER=""
-                fi
-                
-                # 格式化提交信息
-                if [ -n "$SCOPE" ]; then
-                  FORMATTED="- **${SCOPE#(}${SCOPE%)}**: $DESCRIPTION ([${hash}](https://github.com/${{ steps.version.outputs.full_repo }}/commit/${hash}))"
-                else
-                  FORMATTED="- $DESCRIPTION ([${hash}](https://github.com/${{ steps.version.outputs.full_repo }}/commit/${hash}))"
-                fi
-                
-                # 检查是否为破坏性变更
-                if [ "$BREAKING_MARKER" = "!" ] || echo "$subject" | grep -q "BREAKING CHANGE"; then
-                  BREAKING="$BREAKING\n$FORMATTED"
-                fi
-                
-                # 按类型分类
-                case "$TYPE" in
-                  "feat"|"feature")
-                    FEATURES="$FEATURES\n$FORMATTED"
-                    ;;
-                  "fix"|"bugfix")
-                    FIXES="$FIXES\n$FORMATTED"
-                    ;;
-                  "docs"|"doc")
-                    DOCS="$DOCS\n$FORMATTED"
-                    ;;
-                  "style")
-                    STYLE="$STYLE\n$FORMATTED"
-                    ;;
-                  "refactor")
-                    REFACTOR="$REFACTOR\n$FORMATTED"
-                    ;;
-                  "perf"|"performance")
-                    PERF="$PERF\n$FORMATTED"
-                    ;;
-                  "test")
-                    TEST="$TEST\n$FORMATTED"
-                    ;;
-                  "chore"|"build"|"ci")
-                    CHORE="$CHORE\n$FORMATTED"
-                    ;;
-                  *)
-                    OTHER="$OTHER\n$FORMATTED"
-                    ;;
-                esac
+              # 创建提交链接
+              COMMIT_LINK="([${hash}](https://github.com/${{ steps.version.outputs.full_repo }}/commit/${hash}))"
+              
+              # 简单的类型检测
+              if echo "$subject" | grep -q "^feat"; then
+                FEATURES="$FEATURES\n- $subject $COMMIT_LINK"
+              elif echo "$subject" | grep -q "^fix"; then
+                FIXES="$FIXES\n- $subject $COMMIT_LINK"
               else
-                # 非 conventional commit 格式，归类为其他
-                FORMATTED="- $subject ([${hash}](https://github.com/${{ steps.version.outputs.full_repo }}/commit/${hash}))"
-                OTHER="$OTHER\n$FORMATTED"
+                OTHER="$OTHER\n- $subject $COMMIT_LINK"
               fi
             done <<< "$COMMITS"
             
-            # 构建 changelog 内容
-            CHANGELOG_CONTENT="## What's Changed in $TAG_NAME"
-            
-            if [ "${{ steps.version.outputs.is_prerelease }}" = "true" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n\n> ⚠️ **This is a pre-release version**. It may contain bugs or incomplete features."
+            # 添加分类的变更
+            if [ -n "$FEATURES" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT### ✨ Features\n$FEATURES\n\n"
             fi
             
-            CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n"
-            
-            # 添加破坏性变更 (最重要，放在最前面)
-            if [ -n "$BREAKING" ] && [ "$BREAKING" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 💥 Breaking Changes\n$BREAKING\n"
+            if [ -n "$FIXES" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT### 🐛 Bug Fixes\n$FIXES\n\n"
             fi
             
-            # 添加新功能
-            if [ -n "$FEATURES" ] && [ "$FEATURES" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### ✨ New Features\n$FEATURES\n"
-            fi
-            
-            # 添加 Bug 修复
-            if [ -n "$FIXES" ] && [ "$FIXES" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 🐛 Bug Fixes\n$FIXES\n"
-            fi
-            
-            # 添加性能优化
-            if [ -n "$PERF" ] && [ "$PERF" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### ⚡ Performance Improvements\n$PERF\n"
-            fi
-            
-            # 添加重构
-            if [ -n "$REFACTOR" ] && [ "$REFACTOR" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### ♻️ Code Refactoring\n$REFACTOR\n"
-            fi
-            
-            # 添加文档更新
-            if [ -n "$DOCS" ] && [ "$DOCS" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 📚 Documentation\n$DOCS\n"
-            fi
-            
-            # 添加样式更改
-            if [ -n "$STYLE" ] && [ "$STYLE" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 💄 Styles\n$STYLE\n"
-            fi
-            
-            # 添加测试
-            if [ -n "$TEST" ] && [ "$TEST" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 🧪 Tests\n$TEST\n"
-            fi
-            
-            # 添加构建/工具变更
-            if [ -n "$CHORE" ] && [ "$CHORE" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 🔧 Chores\n$CHORE\n"
-            fi
-            
-            # 添加其他变更
-            if [ -n "$OTHER" ] && [ "$OTHER" != "" ]; then
-              CHANGELOG_CONTENT="$CHANGELOG_CONTENT\n### 📋 Other Changes\n$OTHER\n"
+            if [ -n "$OTHER" ]; then
+              CHANGELOG_CONTENT="$CHANGELOG_CONTENT### 📋 Other Changes\n$OTHER\n\n"
             fi
           fi
           
