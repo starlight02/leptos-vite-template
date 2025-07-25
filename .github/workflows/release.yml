@@ -238,138 +238,95 @@ jobs:
           REPO_NAME="${{ steps.version.outputs.repo_name }}"
           FULL_REPO="${{ steps.version.outputs.full_repo }}"
           IS_PRERELEASE="${{ steps.version.outputs.is_prerelease }}"
+          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
           
           # 获取上一个标签
           PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^$TAG_NAME$" | head -n 1)
           
-          # 开始构建 changelog
-          CHANGELOG="# Release $TAG_NAME\n\n"
-          
-          if [ "$IS_PRERELEASE" = "true" ]; then
-            CHANGELOG="$CHANGELOG> ⚠️ **This is a pre-release version**. It may contain experimental features or bugs.\n\n"
-          fi
-          
-          if [ -z "$PREVIOUS_TAG" ]; then
-            # 首次发布
-            CHANGELOG="$CHANGELOG## 🎉 Initial Release\n\n"
-            CHANGELOG="$CHANGELOG### What's Included\n"
-            CHANGELOG="$CHANGELOG- Complete $REPO_NAME application\n"
-            CHANGELOG="$CHANGELOG- WebAssembly (WASM) optimized build\n"
-            CHANGELOG="$CHANGELOG- Production-ready distribution\n"
-            CHANGELOG="$CHANGELOG- Cross-platform compatibility\n\n"
+          # 创建 changelog 文件
+          {
+            echo "# Release $TAG_NAME"
+            echo ""
             
-            # 获取所有提交的统计
-            TOTAL_COMMITS=$(git rev-list --count HEAD)
-            CHANGELOG="$CHANGELOG### 📊 Project Statistics\n"
-            CHANGELOG="$CHANGELOG- Total commits: $TOTAL_COMMITS\n"
-            CHANGELOG="$CHANGELOG- Build platform: wasm32-unknown-unknown\n"
-            CHANGELOG="$CHANGELOG- Package format: ZIP with checksums\n\n"
-          else
-            # 版本更新
-            echo "Generating changelog from $PREVIOUS_TAG to $TAG_NAME"
-            
-            # 获取提交信息，包含更多详细信息
-            COMMITS=$(git log --pretty=format:"%h|%s|%an|%ad" --date=short "$PREVIOUS_TAG..$TAG_NAME")
-            
-            if [ -z "$COMMITS" ]; then
-              CHANGELOG="$CHANGELOG## What's Changed\n\n- No significant changes\n\n"
-            else
-              CHANGELOG="$CHANGELOG## What's Changed\n\n"
-              
-              # 分类变更
-              FEATURES=""
-              FIXES=""
-              DOCS=""
-              CHORES=""
-              OTHERS=""
-              
-              # 处理每个提交
-              while IFS='|' read -r hash subject author date; do
-                [ -z "$hash" ] && continue
-                
-                # 创建提交链接
-                COMMIT_LINK="([${hash}](https://github.com/${FULL_REPO}/commit/${hash}))"
-                FORMATTED_ITEM="- $subject by @$author $COMMIT_LINK"
-                
-                # 简单分类
-                case "$subject" in
-                  feat*|add*|implement*|"Add "*|"Implement "*)
-                    FEATURES="$FEATURES\n$FORMATTED_ITEM"
-                    ;;
-                  fix*|"Fix "*|"Resolve "*|"Correct "*)
-                    FIXES="$FIXES\n$FORMATTED_ITEM"
-                    ;;
-                  doc*|"Update "*README*|"Add "*doc*)
-                    DOCS="$DOCS\n$FORMATTED_ITEM"
-                    ;;
-                  chore*|build*|ci*|"Update "*workflow*|"Bump "*)
-                    CHORES="$CHORES\n$FORMATTED_ITEM"
-                    ;;
-                  *)
-                    OTHERS="$OTHERS\n$FORMATTED_ITEM"
-                    ;;
-                esac
-              done <<< "$COMMITS"
-              
-              # 添加分类的变更
-              if [ -n "$FEATURES" ]; then
-                CHANGELOG="$CHANGELOG### ✨ New Features\n$FEATURES\n\n"
-              fi
-              
-              if [ -n "$FIXES" ]; then
-                CHANGELOG="$CHANGELOG### 🐛 Bug Fixes\n$FIXES\n\n"
-              fi
-              
-              if [ -n "$DOCS" ]; then
-                CHANGELOG="$CHANGELOG### 📚 Documentation\n$DOCS\n\n"
-              fi
-              
-              if [ -n "$CHORES" ]; then
-                CHANGELOG="$CHANGELOG### 🔧 Maintenance\n$CHORES\n\n"
-              fi
-              
-              if [ -n "$OTHERS" ]; then
-                CHANGELOG="$CHANGELOG### 📋 Other Changes\n$OTHERS\n\n"
-              fi
-              
-              # 添加统计信息
-              COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
-              CHANGELOG="$CHANGELOG### 📊 Release Statistics\n"
-              CHANGELOG="$CHANGELOG- Commits in this release: $COMMIT_COUNT\n"
-              CHANGELOG="$CHANGELOG- Previous version: $PREVIOUS_TAG\n"
-              CHANGELOG="$CHANGELOG- Release type: $([ "$IS_PRERELEASE" = "true" ] && echo "Pre-release" || echo "Stable")\n\n"
+            if [ "$IS_PRERELEASE" = "true" ]; then
+              echo "> ⚠️ **This is a pre-release version**. It may contain experimental features or bugs."
+              echo ""
             fi
-          fi
-          
-          # 添加下载和验证说明
-          PACKAGE_NAME="${{ steps.version.outputs.package_name }}"
-          CHANGELOG="$CHANGELOG## 📥 Download & Installation\n\n"
-          CHANGELOG="$CHANGELOG### Files in this release:\n"
-          CHANGELOG="$CHANGELOG- \`$PACKAGE_NAME\` - Main application package\n"
-          CHANGELOG="$CHANGELOG- \`${PACKAGE_NAME}.sha256\` - SHA256 checksum\n"
-          CHANGELOG="$CHANGELOG- \`${PACKAGE_NAME}.sha1\` - SHA1 checksum\n\n"
-          
-          CHANGELOG="$CHANGELOG### Installation steps:\n"
-          CHANGELOG="$CHANGELOG1. Download \`$PACKAGE_NAME\`\n"
-          CHANGELOG="$CHANGELOG2. Verify integrity: \`sha256sum -c ${PACKAGE_NAME}.sha256\`\n"
-          CHANGELOG="$CHANGELOG3. Extract the ZIP file\n"
-          CHANGELOG="$CHANGELOG4. Serve files with a web server\n"
-          CHANGELOG="$CHANGELOG5. Open \`index.html\` in your browser\n\n"
-          
-          CHANGELOG="$CHANGELOG### System Requirements:\n"
-          CHANGELOG="$CHANGELOG- Modern web browser with WebAssembly support\n"
-          CHANGELOG="$CHANGELOG- Web server (for CORS compliance)\n"
-          CHANGELOG="$CHANGELOG- No additional dependencies required\n\n"
-          
-          # 添加链接
-          if [ -n "$PREVIOUS_TAG" ]; then
-            CHANGELOG="$CHANGELOG---\n\n"
-            CHANGELOG="$CHANGELOG**Full Changelog**: https://github.com/${FULL_REPO}/compare/${PREVIOUS_TAG}...${TAG_NAME}\n"
-            CHANGELOG="$CHANGELOG**All Releases**: https://github.com/${FULL_REPO}/releases\n"
-          fi
-          
-          # 保存到文件
-          echo -e "$CHANGELOG" > CHANGELOG.md
+            
+            if [ -z "$PREVIOUS_TAG" ]; then
+              # 首次发布
+              echo "## 🎉 Initial Release"
+              echo ""
+              echo "### What's Included"
+              echo "- Complete $REPO_NAME application"
+              echo "- WebAssembly (WASM) optimized build"
+              echo "- Production-ready distribution"
+              echo "- Cross-platform compatibility"
+              echo ""
+              
+              TOTAL_COMMITS=$(git rev-list --count HEAD)
+              echo "### 📊 Project Statistics"
+              echo "- Total commits: $TOTAL_COMMITS"
+              echo "- Build platform: wasm32-unknown-unknown"
+              echo "- Package format: ZIP with checksums"
+              echo ""
+            else
+              # 版本更新
+              echo "## What's Changed"
+              echo ""
+              
+              # 获取提交信息
+              COMMITS=$(git log --pretty=format:"%h|%s|%an" "$PREVIOUS_TAG..$TAG_NAME")
+              
+              if [ -z "$COMMITS" ]; then
+                echo "- No significant changes"
+                echo ""
+              else
+                # 分类变更
+                echo "$COMMITS" | while IFS='|' read -r hash subject author; do
+                  [ -z "$hash" ] && continue
+                  echo "- $subject ([${hash}](https://github.com/${FULL_REPO}/commit/${hash})) by @$author"
+                done
+                echo ""
+                
+                COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
+                echo "### 📊 Release Statistics"
+                echo "- Commits in this release: $COMMIT_COUNT"
+                echo "- Previous version: $PREVIOUS_TAG"
+                echo "- Release type: $([ "$IS_PRERELEASE" = "true" ] && echo "Pre-release" || echo "Stable")"
+                echo ""
+              fi
+            fi
+            
+            # 添加下载和安装说明
+            echo "## 📥 Download & Installation"
+            echo ""
+            echo "### Files in this release:"
+            echo "- \`$PACKAGE_NAME\` - Main application package"
+            echo "- \`${PACKAGE_NAME}.sha256\` - SHA256 checksum"
+            echo "- \`${PACKAGE_NAME}.sha1\` - SHA1 checksum"
+            echo ""
+            echo "### Installation steps:"
+            echo "1. Download \`$PACKAGE_NAME\`"
+            echo "2. Verify integrity: \`sha256sum -c ${PACKAGE_NAME}.sha256\`"
+            echo "3. Extract the ZIP file"
+            echo "4. Serve files with a web server"
+            echo "5. Open \`index.html\` in your browser"
+            echo ""
+            echo "### System Requirements:"
+            echo "- Modern web browser with WebAssembly support"
+            echo "- Web server (for CORS compliance)"
+            echo "- No additional dependencies required"
+            echo ""
+            
+            # 添加链接
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "---"
+              echo ""
+              echo "**Full Changelog**: https://github.com/${FULL_REPO}/compare/${PREVIOUS_TAG}...${TAG_NAME}"
+              echo "**All Releases**: https://github.com/${FULL_REPO}/releases"
+            fi
+          } > CHANGELOG.md
           
           echo "Generated changelog for $TAG_NAME"
           echo "Changelog length: $(wc -l < CHANGELOG.md) lines"
