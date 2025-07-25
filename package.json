@@ -11,8 +11,6 @@
     "build": "node scripts/build-all.js --env=production --release",
     "build:dev": "node scripts/build-all.js --env=development --dev",
     "build:github": "node scripts/build-all.js --env=github-pages --release",
-    "build:verify": "pnpm run build && node scripts/verify-build.js",
-    "build:verify:github": "pnpm run build:github && node scripts/verify-build.js",
     "preview": "vite preview",
     "clean": "rimraf pkg dist target/wasm32-unknown-unknown"
   },
